@@ -1,0 +1,167 @@
+import java.util.ArrayList;
+import com.guaju.mygooglemarket.util.LogUtil;
+import android.content.Context;
+import android.util.AttributeSet;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.TextView;
+
+public class FlowLayout extends ViewGroup {
+	private ArrayList<Line> lineList=new ArrayList<FlowLayout.Line>();	
+	private int horizontalSpacing = 10;//水平间距
+	private int verticalSpacing = 10;//垂直间距
+	public void setHorizontalSpacing(int horizontalSpacing) {
+		this.horizontalSpacing = horizontalSpacing;
+	}
+	public void setVerticalSpacing(int verticalSpacing) {
+		this.verticalSpacing = verticalSpacing;
+	}
+	public FlowLayout(Context context, AttributeSet attrs, int defStyle) {
+		super(context, attrs, defStyle);
+	}
+
+	public FlowLayout(Context context, AttributeSet attrs) {
+		super(context, attrs);
+	}
+
+	public FlowLayout(Context context) {
+		super(context);
+		// TODO Auto-generated constructor stub
+	}
+	@Override
+	protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+		//获取总宽度，是包含paddingLeft和paddingRight
+		int width = MeasureSpec.getSize(widthMeasureSpec);
+		//获取用于比较的宽度,就是减去左右padding的宽度
+		int noPaddingWidth=width-getPaddingLeft()-getPaddingRight();
+		//遍历所有的子TextView，根据宽度进行比较和分行
+		Line line = null;
+		//获得所有的子view,然后循环遍历
+		for (int i = 0; i < getChildCount(); i++) {
+			View childV=getChildAt(i);
+			//先测量childView，目的是保证能够获取到宽高
+			//系统发现传的是0,0等非法值，则会按照TextView自己的宽高测量
+			childV.measure(0, 0);
+			if (line==null) {
+				line=new Line();
+			}
+			if (line.getViewList().size()==0) {
+				line.addView(childV);
+			}else if (line.getWidth()+childV.getMeasuredWidth()+horizontalSpacing>noPaddingWidth) {
+				lineList.add(line);
+				//然后重新再起一行
+				line=new  Line();
+				//然后把childV加进去
+				line.addView(childV);
+			}
+			else {
+				line.addView(childV);
+			}
+			//如果当前childView是最后一个，则需要将最后的line保存到lineList，否则会造成最后的line丢失
+			if(i==(getChildCount()-1)){
+				lineList.add(line);//将最后的line保存起来
+			}
+		}
+		//计算FlowLayout需要的高度
+		//先初始化默认值高度
+		int height=getPaddingTop()+getPaddingBottom();
+		for (int i = 0; i < lineList.size(); i++) {
+			height+=lineList.get(i).getHeight();
+		}
+		height+=(lineList.size()-1)*verticalSpacing;
+		//宽高都设置完了 ,向父view申请宽高
+		setMeasuredDimension(width,height);
+	}
+	/**
+	 * 遍历所有的line，将每个line中的子TextView放置到对应的位置上
+	 */
+	@Override
+	protected void onLayout(boolean changed, int l, int t, int r, int b) {
+		int paddingLeft = getPaddingLeft();
+		int paddingTop = getPaddingTop();
+		for (int i = 0; i < lineList.size(); i++) {
+			Line line = lineList.get(i);//获取每个line
+			if(i>0){
+				//除去第一行之后的每行的top，都比上一行多一个行高和verticalSpacing
+				paddingTop += line.getHeight()+verticalSpacing;
+			}
+			ArrayList<View> viewList =line.getViewList();//获取每个line中的子view
+			//1.计算留白区域
+			//计算原来的宽度
+			float preWidth=getMeasuredWidth()-getPaddingLeft()-getPaddingRight();
+			//排完一列剩余的空间
+			float remainSpacing=preWidth-line.getWidth();
+			//把剩余的控件分配给每个view对象
+			float eachSpacing=remainSpacing/viewList.size();
+			
+			for (int j = 0; j < viewList.size(); j++) {
+				View childView = viewList.get(j);
+				//需要给每个childview添加剩余的空间,所以每个childview的宽度需要重新测量
+				float  childSize=childView.getMeasuredWidth()+eachSpacing;
+				//得到宽的测量规则
+				int WidthMeasureSpec=MeasureSpec.makeMeasureSpec((int) childSize, MeasureSpec.EXACTLY);
+				//重新测量childView,高按照默认的测量
+				childView.measure(WidthMeasureSpec,0);
+				//接下来开始摆放
+				TextView tv=(TextView)childView;
+				LogUtil.logE(this,tv.getText().toString());
+				if(j==0){
+					//第一个子view的left是靠左和靠上摆放的
+					childView.layout(paddingLeft, paddingTop, paddingLeft+childView.getMeasuredWidth(), paddingTop+childView.getMeasuredHeight());
+				}
+				else {
+					//如果不是第一个
+					//获取前一个子view
+					View preChildView = viewList.get(j-1);
+					//childView的左边
+					int left = preChildView.getRight()+horizontalSpacing;
+					childView.layout(left, preChildView.getTop(),
+							left+childView.getMeasuredWidth(), 
+							preChildView.getBottom());
+				}
+				}
+				
+			}
+		}
+	/**
+	 * 封装每一行的TextView,
+	 * @author Administrator
+	 *
+	 */
+	public  class Line{
+		ArrayList<View> viewList;//用于记录当前行所有TextView
+		int width;//用于记录当前line的宽，实际是当前所有子view的宽+水平间距
+		int height;//其实子view的高度
+		
+		public Line(){
+			viewList = new ArrayList<View>();
+		}
+		public int getWidth(){
+			return width;
+		}
+		public int getHeight(){
+			return height;
+		}
+		//暴漏方法获取数组
+		public ArrayList<View> getViewList(){
+			return viewList;
+		}
+		public void addView(View v){
+			if (!viewList.contains(v)) {
+				//如果不包含,那么添加高和宽
+				if (viewList.size()==0) {
+					//那么宽就等于第一个的宽
+					width=v.getMeasuredWidth();
+				}
+				else {
+					width+=(v.getMeasuredWidth()+horizontalSpacing);
+				}
+				//而height只要有一行就行了
+				height=Math.max(height, v.getMeasuredHeight());
+       //在集合中添加
+				viewList.add(v);
+			}
+		}
+}
+	}
